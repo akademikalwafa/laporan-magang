@@ -297,7 +297,7 @@ ACT.dedit = el => {
 };
 
 // ------------------------------- PENGATURAN (admin) -------------------------------
-const SETK = ['src_surat_url', 'src_surat_sheet', 'src_surat_kata', 'src_rekap_url', 'src_rekap_sheet', 'map', 'bulan_mulai', 'tahun_mulai', 'jumlah_bulan', 'bobot_dosen', 'tanggal_simulasi', 'label_1', 'label_2', 'label_3', 'instruksi_1', 'instruksi_2', 'instruksi_3'];
+const SETK = ['src_surat_url', 'src_surat_sheet', 'src_surat_kata', 'src_surat_status', 'src_angkatan', 'src_rekap_url', 'src_rekap_sheet', 'map', 'bulan_mulai', 'tahun_mulai', 'jumlah_bulan', 'bobot_dosen', 'tanggal_simulasi', 'label_1', 'label_2', 'label_3', 'instruksi_1', 'instruksi_2', 'instruksi_3'];
 function draft() { return S.ui.set || (S.ui.set = Object.fromEntries(SETK.map(k => [k, S.settings[k] ?? '']))); }
 const isDirtySet = () => SETK.some(k => String(draft()[k]) !== String(S.settings[k] ?? ''));
 function previewMonths(s) {
@@ -328,12 +328,13 @@ function renderPengaturan() {
    </div>
    <div class="stack">
     <div class="card"><div class="ch"><h3>${ic('refresh')} Sumber Data Sinkronisasi</h3><span class="b ${s.src_surat_url ? 'ok' : 'wait'}">${s.src_surat_url ? 'Tautan terisi' : 'Belum diisi'}</span></div>
-      <p class="muted sm">Yang masuk ke aplikasi ini hanya mahasiswa yang <b>sudah mengisi Verifikasi Tempat Magang</b> di aplikasi surat <b>dan sudah punya dosen pembimbing</b>. Selain itu tidak dimasukkan.</p>
+      <p class="muted sm">Yang masuk hanya mahasiswa yang ada di <b>surat Konfirmasi Magang yang disetujui</b> <b>dan sudah punya dosen pembimbing</b>. Anggota kelompok dibaca otomatis dari isi surat.</p>
       <label class="lb">Tautan spreadsheet Aplikasi Surat (wajib)</label><div class="inp"><input data-inp="set" data-k="src_surat_url" value="${esc(s.src_surat_url)}" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
       <div class="fgrid"><div><label class="lb">Nama sheet (opsional)</label><input data-inp="set" data-k="src_surat_sheet" value="${esc(s.src_surat_sheet)}" placeholder="sheet pertama"></div>
-        <div><label class="lb">Kata kunci perihal</label><input data-inp="set" data-k="src_surat_kata" value="${esc(s.src_surat_kata)}"></div></div>
+        <div><label class="lb">Jenis surat (kata kunci)</label><input data-inp="set" data-k="src_surat_kata" value="${esc(s.src_surat_kata)}"></div></div>
+      <label class="lb">Status surat yang sah (kosongkan = semua)</label><input data-inp="set" data-k="src_surat_status" value="${esc(s.src_surat_status)}" placeholder="DISETUJUI">
       <label class="lb">Tautan spreadsheet Rekap Mahasiswa (opsional, untuk memastikan semester 7)</label><div class="inp"><input data-inp="set" data-k="src_rekap_url" value="${esc(s.src_rekap_url)}" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
-      <label class="lb">Nama sheet Rekap (opsional)</label><input data-inp="set" data-k="src_rekap_sheet" value="${esc(s.src_rekap_sheet)}" placeholder="sheet pertama">
+      <div class="fgrid"><div><label class="lb">Nama sheet Rekap</label><input data-inp="set" data-k="src_rekap_sheet" value="${esc(s.src_rekap_sheet)}" placeholder="sheet pertama"></div><div><label class="lb">Tahun masuk angkatan (opsional)</label><input data-inp="set" data-k="src_angkatan" value="${esc(s.src_angkatan)}" placeholder="mis. 2023"></div></div>
       <div class="note info">${ic('refresh')}<p><b>Terakhir disinkronkan</b><br>${S.settings.sync_last ? fmtDate(S.settings.sync_last) + ' — ' + esc(S.settings.sync_msg) : 'Belum pernah. ' + S.mahasiswa.length + ' mahasiswa aktif saat ini.'}<br><small>Otomatis tiap hari 02:00 WIB.</small></p></div>
       <div class="stack" style="gap:8px;margin-top:10px"><button class="btn out wide" data-act="srccols">${ic('sliders')} 1. Uji Tautan & Atur Kolom</button>
         <button class="btn out wide" data-act="syncpreview">${ic('eye')} 2. Pratinjau Hasil (tanpa mengubah data)</button>
@@ -393,8 +394,10 @@ async function saveSettingsNow() {
   const r = await API.callRetry('saveSettings', { settings: v });
   Object.assign(S.settings, r.settings); S.ui.set = null; S.ver++; markDirty();
 }
-const SRCF = { surat: [['nim', 'NIM *'], ['perihal', 'Perihal surat *'], ['mitra', 'Tempat magang / instansi *'], ['dosen', 'Dosen pembimbing *'], ['nama', 'Nama mahasiswa'], ['tanggal', 'Tanggal surat'], ['prodi', 'Program studi']],
-               rekap: [['nim', 'NIM *'], ['semester', 'Semester *'], ['nama', 'Nama mahasiswa'], ['prodi', 'Program studi']] };
+const SRCF = {
+  surat: [['perihal', 'Kolom jenis surat *'], ['status', 'Kolom status surat'], ['json', 'Kolom data JSON (anggota, instansi, dosen)'], ['nim', 'Kolom NIM (cadangan)'], ['tanggal', 'Kolom tanggal'], ['mitra', 'Kolom tempat magang (jika bukan di JSON)'], ['dosen', 'Kolom dosen pembimbing (jika bukan di JSON)']],
+  rekap: [['nim', 'NIM *'], ['nama', 'Nama'], ['prodi', 'Program studi'], ['status', 'Status mahasiswa (Aktif/…)'], ['angkatan', 'Tahun masuk'], ['semester', 'Semester (jika ada)']] };
+const SRCP = [['p_mitra', 'Di dalam JSON → tempat magang', 'instansi'], ['p_dosen', 'Di dalam JSON → dosen pembimbing', '_admin.NAMA_DOSEN_PEMBIMBING'], ['p_anggota', 'Di dalam JSON → daftar anggota', 'anggotaAcc']];
 function parseMapD() { try { return JSON.parse(draft().map || '{}') || {}; } catch (e) { return {}; } }
 ACT.srccols = async () => {
   const d = draft(), kinds = [];
@@ -402,36 +405,51 @@ ACT.srccols = async () => {
   if (!kinds.length) return toast('Isi tautan Aplikasi Surat terlebih dahulu.', 'bad');
   const m = modal(`<div class="mh2"><h3>Uji Tautan & Atur Kolom</h3><button class="icb" data-close>${ic('x')}</button></div><div id="srcbody"><div class="center"><span class="spin dark big"></span><p class="muted">Menghubungi spreadsheet…</p></div></div>`, 'wide');
   const st = {}, map = parseMapD();
+  const collect = k => {
+    const o = {};
+    SRCF[k].forEach(([f]) => { const el = $('select[data-fld="' + k + '.' + f + '"]', m); if (el) o[f] = el.value || '-'; });
+    if (k === 'surat') SRCP.forEach(([f, , def]) => { const el = $('input[data-path="' + f + '"]', m); const v = el ? el.value.trim() : ''; if (v && v !== def) o[f] = v; });
+    return o;
+  };
   const load = async kind => {
-    try { st[kind] = await API.call('previewSumber', { kind, url: d['src_' + kind + '_url'], sheet: d['src_' + kind + '_sheet'], map }); st[kind].err = ''; }
+    try { st[kind] = await API.call('previewSumber', { kind, url: d['src_' + kind + '_url'], sheet: d['src_' + kind + '_sheet'], map, kata: d.src_surat_kata, status: d.src_surat_status }); }
     catch (e) { st[kind] = { err: e.message }; }
   };
   const draw = () => {
     $('#srcbody', m).innerHTML = kinds.map(k => {
-      const p = st[k]; const ttl = k === 'surat' ? 'Aplikasi Surat' : 'Rekap Mahasiswa';
+      const p = st[k], ttl = k === 'surat' ? 'Aplikasi Surat' : 'Rekap Mahasiswa';
       if (p.err) return `<div class="alert bad"><div><b>${ttl}</b><p>${esc(p.err)}</p></div></div>`;
+      const c = p.contoh, mp = map[k] || {};
       return `<div class="dm"><h4>${ttl}: ${esc(p.judul)} <span class="b ok">${p.total} baris</span></h4>
         <label class="lb">Sheet</label><select data-sheet="${k}">${p.sheets.map(n => `<option ${n === p.sheet ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
         <div class="fgrid">${SRCF[k].map(([f, lb]) => `<div><label class="lb">${lb}</label><select data-fld="${k}.${f}"><option value="">(tidak dipakai)</option>${p.headers.map(h => `<option ${h === p.detected[f] ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></div>`).join('')}</div>
-        <div class="tscroll"><table class="tbl" style="min-width:0;font-size:12px"><thead><tr>${p.headers.slice(0, 8).map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${p.sample.map(r => `<tr>${r.slice(0, 8).map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+        ${k === 'surat' ? `<div class="fgrid">${SRCP.map(([f, lb, def]) => `<div><label class="lb">${lb}</label><input data-path="${f}" value="${esc(mp[f] || def)}"></div>`).join('')}</div>
+          ${c ? (c.ok ? `<div class="note info">${ic('check')}<p><b>Contoh hasil baca (${c.baris} surat cocok):</b><br>Tempat magang: <b>${esc(c.instansi || '— kosong —')}</b><br>Dosen pembimbing: <b>${esc(c.dosen || '— kosong —')}</b><br>Anggota: <b>${c.anggota}</b>${c.nama.length ? ' (' + esc(c.nama.join(', ')) + '…)' : ''}${c.msg ? '<br><span class="red">' + esc(c.msg) + '</span>' : ''}</p></div>` : `<div class="alert bad sm">${ic('alert')}<div><p>${esc(c.msg)}</p></div></div>`) : ''}` : ''}
+        <button class="btn out sm" data-recheck="${k}" style="margin-top:8px">${ic('refresh')} Cek ulang dengan pilihan ini</button>
+        <div class="tscroll" style="margin-top:10px"><table class="tbl" style="min-width:0;font-size:12px"><thead><tr>${p.headers.slice(0, 8).map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${p.sample.map(rw => `<tr>${rw.slice(0, 8).map(cc => `<td>${esc(cc)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
     }).join('') + `<div class="two"><button class="btn ghost" data-close>Batal</button><button class="btn pri" id="srcsave">${ic('check')} Simpan Pengaturan Kolom</button></div>`;
     $$('select[data-sheet]', m).forEach(sel => sel.onchange = async () => { const k = sel.dataset.sheet; d['src_' + k + '_sheet'] = sel.value; delete map[k]; $('#srcbody', m).style.opacity = .5; await load(k); $('#srcbody', m).style.opacity = 1; draw(); });
+    $$('[data-recheck]', m).forEach(b => b.onclick = async () => { const k = b.dataset.recheck; map[k] = collect(k); b.disabled = true; await load(k); draw(); });
     const sv = $('#srcsave', m); if (sv) sv.onclick = async () => {
       const out = {}; let warn = '';
-      kinds.forEach(k => { if (st[k].err) return; out[k] = {}; SRCF[k].forEach(([f, lb]) => { const v = $('select[data-fld="' + k + '.' + f + '"]', m).value; if (v) out[k][f] = v; else if (lb.endsWith('*')) warn = lb.replace(' *', ''); }); });
-      if (warn) return toast('Kolom wajib belum dipilih: ' + esc(warn), 'bad');
+      kinds.forEach(k => { if (st[k].err) return; out[k] = collect(k); });
+      if (out.surat && out.surat.perihal === '-') warn = 'Kolom jenis surat';
+      else if (out.surat && out.surat.json === '-' && out.surat.nim === '-') warn = 'Kolom data JSON atau NIM';
+      else if (out.rekap && out.rekap.nim === '-') warn = 'NIM di Rekap';
+      if (warn) return toast('Wajib dipilih: ' + esc(warn), 'bad');
       d.map = JSON.stringify(out);
       sv.disabled = true; sv.innerHTML = '<span class="spin"></span> Menyimpan…';
-      try { await saveSettingsNow(); m.close(); toast('Pengaturan sumber & kolom tersimpan.'); } catch (e) { toast(esc(e.message), 'bad'); sv.disabled = false; sv.innerHTML = 'Simpan Pengaturan Kolom'; }
+      try { await saveSettingsNow(); m.close(); toast('Pengaturan sumber & kolom tersimpan. Lanjut klik Pratinjau Hasil.'); } catch (e) { toast(esc(e.message), 'bad'); sv.disabled = false; sv.innerHTML = 'Simpan Pengaturan Kolom'; }
     };
   };
   await Promise.all(kinds.map(load)); draw();
 };
-const syncReport = (r, apply) => `
+const syncReport = r => `
   <div class="stats3"><div class="card stat3 ok"><small>LAYAK MASUK</small><div><b>${r.layak}</b><span>mahasiswa</span></div></div>
     <div class="card stat3 wait"><small>DILEWATI</small><div><b>${r.dilewati}</b><span>belum lengkap</span></div></div>
     <div class="card stat3 mute"><small>DINONAKTIFKAN</small><div><b>${r.akanDiarsipkan}</b><span>tidak ada di sumber</span></div></div></div>
-  <p class="muted sm">${r.cocok} baris surat cocok dengan perihal “${esc(S.settings.src_surat_kata)}” · periode ${esc(r.periode)}</p>
+  <p class="muted sm">Penyaringan: ${r.funnel.total} baris surat → ${r.funnel.jenis} berjenis “${esc(S.settings.src_surat_kata)}” → ${r.funnel.status} berstatus sah → ${r.funnel.anggota} anggota ditemukan · periode ${esc(r.periode)}</p>
+  ${r.layak === 0 ? `<div class="alert bad sm">${ic('alert')}<div><p>Belum ada yang layak. Lihat angka penyaringan di atas untuk tahu tahap yang menghabiskan data (jenis, status, atau anggota), lalu cek lewat “Uji Tautan & Atur Kolom”.</p></div></div>` : ''}
   ${r.skip.length ? `<h4 style="margin-top:12px">Dilewati (perlu dilengkapi di aplikasi surat/rekap)</h4><div class="tscroll" style="max-height:240px"><table class="tbl" style="min-width:0;font-size:12.5px"><tbody>${r.skip.map(x => `<tr><td class="mono">${esc(x.nim)}</td><td>${esc(x.nama)}</td><td class="red">${esc(x.alasan)}</td></tr>`).join('')}</tbody></table></div>${r.dilewati > r.skip.length ? `<small class="muted">…dan ${r.dilewati - r.skip.length} lainnya</small>` : ''}` : ''}
   ${r.sample.length ? `<h4 style="margin-top:12px">Contoh yang masuk</h4><ul class="muted sm" style="padding-left:18px">${r.sample.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
 ACT.syncpreview = async el => {
@@ -451,7 +469,7 @@ ACT.syncnow = async el => {
     await saveSettingsNow();
     const r = await API.call('syncNow', {}); S.settings.sync_last = r.last; S.settings.sync_msg = r.msg;
     await refresh(true);
-    toast('Sinkronisasi selesai: ' + esc(r.msg) + (r.dilewati ? ' Buka “Pratinjau Hasil” untuk melihat yang dilewati.' : ''), 'ok', { ms: 7000 });
+    toast(r.layak ? 'Sinkronisasi selesai: ' + esc(r.msg) + (r.dilewati ? ' Buka “Pratinjau Hasil” untuk melihat yang dilewati.' : '') : 'Tidak ada mahasiswa yang layak masuk. Buka “Pratinjau Hasil” untuk melihat penyebabnya.', r.layak ? 'ok' : 'bad', { ms: 8000 });
   } catch (e) { toast(esc(e.message), 'bad', { ms: 9000 }); }
   el.disabled = false; el.innerHTML = old;
 };

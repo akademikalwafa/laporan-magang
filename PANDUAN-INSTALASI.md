@@ -75,3 +75,9 @@ Dua bagian: **Backend** (Google Apps Script) lalu **Frontend** (GitHub Pages).
 2. Jalankan **Sinkronkan Sekarang** untuk memasukkan mahasiswa periode baru.
 3. Data periode lama tetap aman: Rekap → pilih periode di dropdown (mode arsip, baca-saja). **Ekspor CSV** tersedia untuk laporan per periode.
 Folder Drive juga dipisah per periode (Uploads/2026-2027/NIM/...).
+
+## Cara membaca aplikasi surat & rekap (v2.1)
+- **Aplikasi Surat** (sheet Pengajuan): dipakai baris berjenis `KONFIRMASI_MAGANG` dengan status `DISETUJUI`. Daftar anggota (`anggotaAcc`), tempat magang (`instansi`), dan dosen (`_admin.NAMA_DOSEN_PEMBIMBING`) dibaca dari kolom `dataJson`. Satu surat kelompok otomatis menjadi beberapa mahasiswa.
+- **Rekap Mahasiswa** (sheet Mahasiswa): dipakai untuk melengkapi nama/prodi dan menyingkirkan yang statusnya bukan *Aktif* (mis. Mengundurkan Diri). Kolom semester tidak ada, jadi pembatasan angkatan bersifat opsional: isi "Tahun masuk angkatan" (mis. 2023 untuk semester 7 pada 2026/2027) atau kosongkan.
+- Mahasiswa yang sudah disetujui tetapi belum punya dosen pembimbing di surat akan **dilewati** dan muncul di Pratinjau Hasil dengan alasannya.
+- Update dari versi sebelumnya: ganti `Kode.gs`, **Deploy → New version**, lalu `git push` isi ZIP baru (jangan menimpa URL di `js/config.js`).
