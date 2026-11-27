@@ -45,6 +45,7 @@ function keepLocal(list) {
 }
 function applyBoot(b) {
   S.user = b.user; S.role = b.user.role; S.settings = b.settings; S.off = b.serverNow - Date.now();
+  S.periode = b.periode; S.arsip = !!b.arsip; S.periodes = b.periodes || []; S.periodeAktif = b.periodeAktif || b.periode;
   if (S.role === 'mhs') {
     S.profile = b.profile; S.fotos = keepLocal(b.fotos);
     S.laporan = (S.laporan && S.laporan._state) ? S.laporan : b.laporan;
@@ -59,7 +60,7 @@ function applyBoot(b) {
   }
   S.ver++; S._rk = null;
 }
-function saveBoot(b) { try { localStorage.setItem('pkl_boot', JSON.stringify(b)); } catch (e) { /* kuota penuh: abaikan */ } }
+function saveBoot(b) { if (b.arsip) return; try { localStorage.setItem('pkl_boot', JSON.stringify(b)); } catch (e) { /* kuota penuh: abaikan */ } }
 
 // ---------- Render terjadwal ----------
 let rq = false;
@@ -75,6 +76,7 @@ function renderView(v) {
   if (fn) fn();
 }
 function updateBadges() {
+  const c = $('#top-per'); if (c) { c.textContent = (S.arsip ? 'ARSIP · ' : 'T.A. ') + (S.periode || ''); c.classList.toggle('arch', !!S.arsip); }
   if (S.role !== 'admin') return;
   const n = queueItems().length;
   $$('[data-badge="verifikasi"]').forEach(e => { e.textContent = n; e.style.display = n ? '' : 'none'; });
@@ -113,7 +115,7 @@ const busy = () => S.pending > 0 || (typeof UQ !== 'undefined' && UQ.running) ||
 async function refresh(force) {
   if (!API.token || (!force && busy())) return;
   try {
-    const b = await API.call('bootstrap');
+    const b = await API.call('bootstrap', S.arsip ? { periode: S.periode } : {});
     if (!force && busy()) return;
     applyBoot(b); saveBoot(b); S.lastSync = Date.now(); setSync('ok'); markDirty();
   } catch (e) { if (e.code !== 'AUTH') setSync('err'); }
@@ -134,7 +136,7 @@ function buildShell() {
     <nav>${vs.map(v => `<button class="nv" data-act="nav" data-v="${v}">${ic(NAVL[v][1])}<span>${esc(navLabel(v))}</span>${v === 'verifikasi' ? '<em class="cnt" data-badge="verifikasi" style="display:none">0</em>' : ''}</button>`).join('')}</nav>
     <button class="nv out" data-act="logout">${ic('logout')}<span>Keluar Sistem</span></button>`;
   $('#top').innerHTML = `
-    <span class="logo sm">${ic('cap')}</span><h1 id="top-title"></h1><span class="grow"></span>
+    <span class="logo sm">${ic('cap')}</span><h1 id="top-title"></h1><span class="chip hm" id="top-per"></span><span class="grow"></span>
     <span id="syncpill" class="sync ok"><i></i><span>Tersinkron</span></span>
     <div class="who"><span class="av">${esc(initials(S.user.name))}</span><div><b>${esc(S.user.name)}</b><small>${roleName}${S.role === 'mhs' && S.profile ? ' · ' + esc(S.profile.nim) : ''}</small></div></div>
     <button class="icb" data-act="logout" title="Keluar" aria-label="Keluar">${ic('logout')}</button>`;

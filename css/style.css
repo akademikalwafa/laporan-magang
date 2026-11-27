@@ -129,3 +129,5 @@ select:focus,input:focus,textarea:focus{border-color:var(--navy);background:#fff
 @media(max-width:999px){.hm{display:none}.top h1{font-size:15px}}
 @media(max-width:520px){.dph{gap:6px}.fgrid{grid-template-columns:1fr}.top{gap:8px;padding-left:12px;padding-right:12px}.sync span{display:none}.sync{padding:6px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* v2 */
+.chip.arch{background:#fee2e2;color:#b91c1c}.modal .stats3{margin:10px 0}.modal select{margin-bottom:2px}.fgrid .lb:first-child{margin-top:0}

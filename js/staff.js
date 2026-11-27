@@ -29,52 +29,79 @@ const mchip = p => !p.open ? `<span class="b mute">${ic('lock')}Terkunci</span>`
 const lapChip = (r, open) => r.lap === 'diterima' ? `<span class="b ok">${ic('check')}Diterima</span>` : r.lap === 'menunggu' ? '<span class="b wait">Menunggu (PDF)</span>'
   : r.lap === 'ditolak' ? '<span class="b bad">Ditolak</span>' : (open ? '<span class="b mute">Belum</span>' : '<span class="muted">-</span>');
 
+function rekapFiltered() {
+  const u = S.ui, q = (u.rq || '').toLowerCase().trim();
+  return rekapRows().filter(r => (!u.rs || r.st === u.rs) && (!u.rp || r.prodi === u.rp) && (!u.rd || r.pemb === u.rd) && (!q || r.q.includes(q)));
+}
+function fillSel(sel, label, vals, cur) {
+  const el = $(sel); if (!el) return;
+  el.innerHTML = `<option value="">${label}</option>` + vals.map(v => `<option ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('');
+}
 function renderRekap() {
   const u = S.ui; u.rpage = u.rpage || 1;
   if (!$('#rk-body')) {
-    const prodis = [...new Set(S.mahasiswa.map(m => m.prodi).filter(Boolean))].sort();
     $('#v-rekap').innerHTML = `
-    <div class="pgh row"><div class="grow"><span class="chip"><i></i>TAHUN AKADEMIK ${esc(S.settings.tahun_akademik)}</span><h2>Rekap Mahasiswa PKL & Magang</h2>
-      <p class="muted" id="rk-sub"></p></div>${isAdmin() ? `<button class="btn out" data-act="syncnow">${ic('refresh')} Sinkronisasi Rekap</button>` : ''}</div>
+    <div class="pgh row"><div class="grow"><span class="chip"><i></i><span id="rk-ta"></span></span><h2>Rekap Mahasiswa PKL & Magang</h2>
+      <p class="muted" id="rk-sub"></p></div><button class="btn out" data-act="rcsv">${ic('download')} Ekspor CSV</button>${isAdmin() ? `<button class="btn out" id="rk-sync" data-act="syncnow">${ic('refresh')} Sinkronisasi Rekap</button>` : ''}</div>
+    <div class="alert wait" id="rk-arsip" style="display:none">${ic('lock')}<div><b>Mode Arsip (baca-saja)</b><p>Anda sedang melihat data periode lama. Pilih periode aktif untuk kembali.</p></div></div>
     <div class="stats3" id="rk-stats"></div>
     <div class="card toolbar"><div class="inp srch grow">${ic('search')}<input data-inp="rq" placeholder="Cari berdasarkan NIM atau nama mahasiswa..." value="${esc(u.rq || '')}"></div>
       <select data-chg="rs"><option value="">Semua Status</option><option value="lengkap">Lengkap</option><option value="kurang">Kurang</option><option value="belum">Belum upload</option></select>
-      <select data-chg="rp"><option value="">Semua Program Studi</option>${prodis.map(p => `<option>${esc(p)}</option>`).join('')}</select></div>
+      <select data-chg="rp" id="rk-prodi"></select><select data-chg="rd" id="rk-dosen"></select><select data-chg="rper" id="rk-per" title="Periode"></select></div>
     <div class="card tcard"><div class="tscroll"><table class="tbl"><thead id="rk-head"></thead><tbody id="rk-body"></tbody></table></div><div class="pager" id="rk-pager"></div></div>`;
-    $('select[data-chg=rs]').value = u.rs || ''; $('select[data-chg=rp]').value = u.rp || '';
+    $('select[data-chg=rs]').value = u.rs || '';
   }
   const all = rekapRows(), ms = months(), lp = laporanInfo();
+  fillSel('#rk-prodi', 'Semua Program Studi', [...new Set(S.mahasiswa.map(m => m.prodi).filter(Boolean))].sort(), u.rp);
+  fillSel('#rk-dosen', 'Semua Dosen Pembimbing', [...new Set(S.mahasiswa.map(m => m.pemb).filter(Boolean))].sort(), u.rd);
+  const per = $('#rk-per'); per.style.display = S.periodes.length > 1 ? '' : 'none';
+  per.innerHTML = S.periodes.map(p => `<option value="${esc(p)}" ${p === S.periode ? 'selected' : ''}>${esc(p)}${p === S.periodeAktif ? ' (aktif)' : ''}</option>`).join('');
+  $('#rk-arsip').style.display = S.arsip ? '' : 'none'; const sy = $('#rk-sync'); if (sy) sy.style.display = S.arsip ? 'none' : '';
+  $('#rk-ta').textContent = 'TAHUN AKADEMIK ' + S.periode;
   const c = { lengkap: 0, kurang: 0, belum: 0 }; all.forEach(r => c[r.st]++);
   const pc = k => all.length ? (c[k] / all.length * 100).toFixed(1) + '%' : '0%';
-  $('#rk-sub').textContent = `Pemantauan kelengkapan unggah 3 foto per bulan, laporan PDF, dan nilai akhir ${all.length} mahasiswa semester 7.`;
+  $('#rk-sub').textContent = `Pemantauan kelengkapan unggah 3 foto per bulan, laporan PDF, dan nilai akhir ${all.length} mahasiswa magang.`;
   $('#rk-stats').innerHTML = [['lengkap', 'STATUS: LENGKAP', 'ok'], ['kurang', 'KURANG / PERLU REVISI', 'wait'], ['belum', 'BELUM UPLOAD', 'mute']].map(([k, t, cl]) =>
     `<button class="card stat3 ${cl} ${u.rs === k ? 'on' : ''}" data-act="rstat" data-k="${k}"><small>${t}</small><div><b>${c[k]}</b><span>Mahasiswa</span></div><em>${pc(k)}</em></button>`).join('');
-  $('#rk-head').innerHTML = `<tr><th>NIM</th><th>MAHASISWA & PRODI</th><th class="hm">MITRA INDUSTRI</th>${ms.map(m => `<th>${m.name.slice(0, 3).toUpperCase()} (3 FOTO)</th>`).join('')}<th>LAPORAN PKL</th><th>STATUS AKHIR</th><th></th></tr>`;
-  const q = (u.rq || '').toLowerCase().trim();
-  const list = all.filter(r => (!u.rs || r.st === u.rs) && (!u.rp || r.prodi === u.rp) && (!q || r.q.includes(q)));
-  const per = 25, pages = Math.max(1, Math.ceil(list.length / per)); if (u.rpage > pages) u.rpage = pages;
-  const view = list.slice((u.rpage - 1) * per, u.rpage * per);
+  $('#rk-head').innerHTML = `<tr><th>NIM</th><th>MAHASISWA & PRODI</th><th class="hm">MITRA & PEMBIMBING</th>${ms.map(m => `<th>${m.name.slice(0, 3).toUpperCase()} (3 FOTO)</th>`).join('')}<th>LAPORAN PKL</th><th>STATUS AKHIR</th><th></th></tr>`;
+  const list = rekapFiltered();
+  const pp = 25, pages = Math.max(1, Math.ceil(list.length / pp)); if (u.rpage > pages) u.rpage = pages;
+  const view = list.slice((u.rpage - 1) * pp, u.rpage * pp);
   $('#rk-body').innerHTML = view.length ? view.map(r => `<tr data-act="detail" data-nim="${esc(r.nim)}">
     <td class="mono">${esc(r.nim)}</td><td><div class="who2"><span class="av c${r.nim.slice(-1) % 4}">${esc(initials(r.nama))}</span><div><b>${esc(r.nama)}</b><small>${esc(r.prodi)}</small></div></div></td>
-    <td class="hm">${r.mitra ? ic('building') + esc(r.mitra) : '-'}</td>${r.per.map(p => `<td>${mchip(p)}</td>`).join('')}<td>${lapChip(r, lp.open)}</td>
+    <td class="hm">${r.mitra ? ic('building') + esc(r.mitra) : '-'}${r.pemb ? `<small class="block muted">${esc(r.pemb)}</small>` : ''}</td>${r.per.map(p => `<td>${mchip(p)}</td>`).join('')}<td>${lapChip(r, lp.open)}</td>
     <td>${r.st === 'lengkap' ? '<span class="b ok dot">Lengkap</span>' : r.st === 'belum' ? '<span class="b mute dot">Belum Upload</span>' : `<span class="b wait dot">${r.rev ? 'Perlu Revisi' : 'Kurang'}</span>`}</td>
-    <td><button class="btn ghost sm">${ic('eye')} Lihat</button></td></tr>`).join('') : `<tr><td colspan="${ms.length + 5}" class="empty">Tidak ada mahasiswa yang cocok dengan filter.</td></tr>`;
+    <td><button class="btn ghost sm">${ic('eye')} Lihat</button></td></tr>`).join('') : `<tr><td colspan="${ms.length + 5}" class="empty">${all.length ? 'Tidak ada mahasiswa yang cocok dengan filter.' : 'Belum ada mahasiswa magang pada periode ini. Jalankan sinkronisasi di Pengaturan.'}</td></tr>`;
   const pg = []; for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - u.rpage) <= 1) pg.push(i); else if (pg[pg.length - 1] !== '…') pg.push('…');
-  $('#rk-pager').innerHTML = `<small class="muted">Menampilkan <b>${list.length ? (u.rpage - 1) * per + 1 : 0}-${Math.min(u.rpage * per, list.length)}</b> dari ${list.length} mahasiswa</small><div class="pg">
+  $('#rk-pager').innerHTML = `<small class="muted">Menampilkan <b>${list.length ? (u.rpage - 1) * pp + 1 : 0}-${Math.min(u.rpage * pp, list.length)}</b> dari ${list.length} mahasiswa</small><div class="pg">
     <button ${u.rpage <= 1 ? 'disabled' : ''} data-act="rpage" data-p="${u.rpage - 1}">${ic('chl')}</button>${pg.map(p => p === '…' ? '<span>…</span>' : `<button class="${p === u.rpage ? 'on' : ''}" data-act="rpage" data-p="${p}">${p}</button>`).join('')}<button ${u.rpage >= pages ? 'disabled' : ''} data-act="rpage" data-p="${u.rpage + 1}">${ic('chr')}</button></div>`;
 }
+CHG.rd = el => { S.ui.rd = el.value; S.ui.rpage = 1; renderRekap(); };
+CHG.rper = async el => {
+  try {
+    const b = await API.call('bootstrap', { periode: el.value });
+    applyBoot(b); S.ui.rp = ''; S.ui.rd = ''; S.ui.rpage = 1; S.ui.vq = null; S.ui.dnim = null; markDirty();
+    toast(b.arsip ? 'Menampilkan arsip periode ' + esc(b.periode) + ' (baca-saja).' : 'Kembali ke periode aktif.', 'info', { ms: 2500 });
+  } catch (e) { toast(esc(e.message), 'bad'); renderRekap(); }
+};
+ACT.rcsv = () => {
+  const list = rekapFiltered(), ms = months(), bw = +S.settings.bobot_dosen || 40;
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const head = ['NIM', 'Nama', 'Program Studi', 'Mitra', 'Dosen Pembimbing', ...ms.map(m => 'Foto diterima ' + m.name + ' (maks 3)'), 'Laporan PKL', 'Nilai Dosen', 'Nilai Lapangan', 'Nilai Total', 'Status'];
+  const rows = list.map(r => {
+    const n = S.idx.n[r.nim] || {}, nd = nparse(n.nilaiDosen), nl = nparse(n.nilaiLapangan), tot = nd !== null && nl !== null ? ((nd * bw + nl * (100 - bw)) / 100).toFixed(1) : '';
+    return [r.nim, r.nama, r.prodi, r.mitra, r.pemb, ...r.per.map(p => p.open ? p.acc : 'terkunci'), r.lap || 'belum', nd ?? '', nl ?? '', tot, r.st === 'lengkap' ? 'Lengkap' : r.st === 'belum' ? 'Belum upload' : 'Kurang'];
+  });
+  const csv = '\uFEFF' + [head, ...rows].map(r => r.map(q).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'rekap-pkl-' + String(S.periode).replace(/\W+/g, '-') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+  toast('Rekap diekspor (' + list.length + ' baris). Buka dengan Excel.', 'ok', { ms: 2500 });
+};
 INP.rq = debounce(el => { S.ui.rq = el.value; S.ui.rpage = 1; renderRekap(); }, 150);
 CHG.rs = el => { S.ui.rs = el.value; S.ui.rpage = 1; renderRekap(); };
 CHG.rp = el => { S.ui.rp = el.value; S.ui.rpage = 1; renderRekap(); };
 ACT.rstat = el => { S.ui.rs = S.ui.rs === el.dataset.k ? '' : el.dataset.k; $('select[data-chg=rs]').value = S.ui.rs; S.ui.rpage = 1; renderRekap(); };
 ACT.rpage = el => { S.ui.rpage = +el.dataset.p; renderRekap(); };
-ACT.syncnow = async el => {
-  const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spin dark"></span> Menyinkronkan…';
-  try { const r = await API.call('syncNow'); toast('Sinkronisasi selesai: ' + esc(r.msg)); S.settings.sync_last = r.last; S.settings.sync_msg = r.msg; await refresh(true); }
-  catch (e) { toast(esc(e.message), 'bad', { ms: 8000 }); }
-  el.disabled = false; el.innerHTML = old;
-};
-
 // ------------------------------- DETAIL MAHASISWA -------------------------------
 function askReason(title, cb) {
   const chips = ['Foto buram / blur', 'ID Card / Nametag tidak tampak', 'Bukan lokasi magang resmi', 'Aktivitas tidak sesuai pedoman'];
@@ -87,7 +114,7 @@ function askReason(title, cb) {
 }
 function detailHtml(nim) {
   const m = S.mahasiswa.find(x => x.nim === nim) || { nim, nama: nim }, ms = months(), lp = laporanInfo(), L = S.idx.l[nim], N = S.idx.n[nim];
-  const fs = S.idx.f[nim] || [], adm = isAdmin();
+  const fs = S.idx.f[nim] || [], adm = isAdmin() && !S.arsip;
   return `<div class="dh"><span class="av lg">${esc(initials(m.nama))}</span><div class="grow"><h3>${esc(m.nama)}</h3><p class="muted">NIM <span class="mono">${esc(m.nim)}</span> · ${esc(m.prodi || '-')}</p>
     <p class="muted sm">${m.mitra ? ic('building') + esc(m.mitra) : ''}${m.pemb ? ' · Pembimbing: ' + esc(m.pemb) : ''}</p></div><button class="icb" data-close>${ic('x')}</button></div>
   ${ms.map(mo => !mo.open ? `<div class="dm lockm">${ic('lock')} Bulan ${mo.n} — ${mo.name} <span class="b mute">Terkunci</span></div>` : `<div class="dm"><h4>Bulan ${mo.n} — ${mo.name} ${mo.year}</h4><div class="dph">${[1, 2, 3].map(s => {
@@ -114,6 +141,7 @@ ACT.dtlrej = el => askReason('Tolak Laporan PKL', n => { queueDecision({ type: '
 // ------------------------------- VERIFIKASI (admin) -------------------------------
 let vbuf = [], vtimer = null;
 function queueItems() {
+  if (S.arsip) return [];
   if (S._q && S._q.v === S.ver) return S._q.l;
   const l = [];
   S.fotos.forEach(f => { if (f.status === 'menunggu' && f.fileId) l.push({ type: 'foto', key: 'f' + f.id, id: f.id, nim: f.nim, bulan: f.bulan, slot: f.slot, fileId: f.fileId, tgl: f.tgl }); });
@@ -269,7 +297,7 @@ ACT.dedit = el => {
 };
 
 // ------------------------------- PENGATURAN (admin) -------------------------------
-const SETK = ['tahun_akademik', 'bulan_mulai', 'tahun_mulai', 'jumlah_bulan', 'bobot_dosen', 'tanggal_simulasi', 'label_1', 'label_2', 'label_3', 'instruksi_1', 'instruksi_2', 'instruksi_3'];
+const SETK = ['src_surat_url', 'src_surat_sheet', 'src_surat_kata', 'src_rekap_url', 'src_rekap_sheet', 'map', 'bulan_mulai', 'tahun_mulai', 'jumlah_bulan', 'bobot_dosen', 'tanggal_simulasi', 'label_1', 'label_2', 'label_3', 'instruksi_1', 'instruksi_2', 'instruksi_3'];
 function draft() { return S.ui.set || (S.ui.set = Object.fromEntries(SETK.map(k => [k, S.settings[k] ?? '']))); }
 const isDirtySet = () => SETK.some(k => String(draft()[k]) !== String(S.settings[k] ?? ''));
 function previewMonths(s) {
@@ -289,7 +317,7 @@ function renderPengaturan() {
       <div class="fgrid"><div><label class="lb">Bulan Mulai Magang</label><select data-inp="set" data-k="bulan_mulai">${BULAN.map((b, i) => `<option value="${i + 1}" ${+s.bulan_mulai === i + 1 ? 'selected' : ''}>${b} (Bulan ${i + 1})</option>`).join('')}</select></div>
       <div><label class="lb">Tahun Mulai</label><input type="number" data-inp="set" data-k="tahun_mulai" value="${esc(s.tahun_mulai)}"></div>
       <div><label class="lb">Durasi Periode Magang</label><select data-inp="set" data-k="jumlah_bulan">${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${+s.jumlah_bulan === n ? 'selected' : ''}>${n} Bulan</option>`).join('')}</select></div>
-      <div><label class="lb">Tahun Akademik</label><input data-inp="set" data-k="tahun_akademik" value="${esc(s.tahun_akademik)}"></div>
+      <div><label class="lb">Periode Aktif (tahun akademik)</label><input value="${esc(S.settings.tahun_akademik)}" disabled></div>
       <div><label class="lb">Bobot Nilai Dosen (%)</label><input type="number" min="0" max="100" data-inp="set" data-k="bobot_dosen" value="${esc(s.bobot_dosen)}"></div>
       <div><label class="lb">Simulasi tanggal (uji coba)</label><input type="date" data-inp="set" data-k="tanggal_simulasi" value="${esc(s.tanggal_simulasi)}"></div></div>
       <p class="muted sm">Jendela Laporan PKL & Nilai otomatis terbuka pada bulan setelah periode magang berakhir. Kosongkan simulasi tanggal untuk memakai tanggal asli.</p>
@@ -299,10 +327,20 @@ function renderPengaturan() {
       <p class="muted sm">${ic('shield')} Format JPG/PNG · otomatis dikompres di perangkat mahasiswa sebelum dikirim.</p></div>
    </div>
    <div class="stack">
-    <div class="card"><div class="ch"><h3>${ic('refresh')} Sinkronisasi Data Mahasiswa</h3><span class="b ok">Tersambung</span></div>
-      <p class="muted sm">Sumber: aplikasi Rekap Mahasiswa (hanya semester 7). Otomatis tiap hari pukul 02:00 WIB via trigger Apps Script.</p>
-      <div class="note info">${ic('refresh')}<p><b>Terakhir disinkronkan</b><br>${S.settings.sync_last ? fmtDate(S.settings.sync_last) + ' — ' + esc(S.settings.sync_msg) : 'Belum pernah. ' + S.mahasiswa.length + ' mahasiswa aktif saat ini.'}</p></div>
-      <button class="btn pri wide" data-act="syncnow">${ic('refresh')} Sinkronkan Sekarang</button></div>
+    <div class="card"><div class="ch"><h3>${ic('refresh')} Sumber Data Sinkronisasi</h3><span class="b ${s.src_surat_url ? 'ok' : 'wait'}">${s.src_surat_url ? 'Tautan terisi' : 'Belum diisi'}</span></div>
+      <p class="muted sm">Yang masuk ke aplikasi ini hanya mahasiswa yang <b>sudah mengisi Verifikasi Tempat Magang</b> di aplikasi surat <b>dan sudah punya dosen pembimbing</b>. Selain itu tidak dimasukkan.</p>
+      <label class="lb">Tautan spreadsheet Aplikasi Surat (wajib)</label><div class="inp"><input data-inp="set" data-k="src_surat_url" value="${esc(s.src_surat_url)}" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
+      <div class="fgrid"><div><label class="lb">Nama sheet (opsional)</label><input data-inp="set" data-k="src_surat_sheet" value="${esc(s.src_surat_sheet)}" placeholder="sheet pertama"></div>
+        <div><label class="lb">Kata kunci perihal</label><input data-inp="set" data-k="src_surat_kata" value="${esc(s.src_surat_kata)}"></div></div>
+      <label class="lb">Tautan spreadsheet Rekap Mahasiswa (opsional, untuk memastikan semester 7)</label><div class="inp"><input data-inp="set" data-k="src_rekap_url" value="${esc(s.src_rekap_url)}" placeholder="https://docs.google.com/spreadsheets/d/…"></div>
+      <label class="lb">Nama sheet Rekap (opsional)</label><input data-inp="set" data-k="src_rekap_sheet" value="${esc(s.src_rekap_sheet)}" placeholder="sheet pertama">
+      <div class="note info">${ic('refresh')}<p><b>Terakhir disinkronkan</b><br>${S.settings.sync_last ? fmtDate(S.settings.sync_last) + ' — ' + esc(S.settings.sync_msg) : 'Belum pernah. ' + S.mahasiswa.length + ' mahasiswa aktif saat ini.'}<br><small>Otomatis tiap hari 02:00 WIB.</small></p></div>
+      <div class="stack" style="gap:8px;margin-top:10px"><button class="btn out wide" data-act="srccols">${ic('sliders')} 1. Uji Tautan & Atur Kolom</button>
+        <button class="btn out wide" data-act="syncpreview">${ic('eye')} 2. Pratinjau Hasil (tanpa mengubah data)</button>
+        <button class="btn pri wide" data-act="syncnow">${ic('refresh')} 3. Sinkronkan Sekarang</button></div></div>
+    <div class="card"><div class="ch"><h3>${ic('clock')} Periode / Tahun Ajaran</h3><span class="b ok">Aktif: ${esc(S.settings.tahun_akademik)}</span></div>
+      <p class="muted sm">Aplikasi dipakai ulang tiap tahun. Saat angkatan baru mulai, tekan tombol di bawah: data periode ini diarsipkan (tetap bisa dilihat di Rekap → pilih periode) dan periode baru mulai bersih.</p>
+      <button class="btn out wide" data-act="perbaru">${ic('plus')} Mulai Periode Baru…</button></div>
     <div class="card"><div class="ch"><h3>Ringkasan Validasi Berkas Berjalan</h3></div>
       <div class="ring" style="--p:${pct}"><b>${pct}%</b><small>Tervalidasi</small></div>
       <div class="kv"><div><small>Foto diterima</small><b>${acc} / ${ex || '–'}</b></div><div><small>Menunggu review</small><b>${wait}</b></div></div></div>
@@ -346,4 +384,92 @@ ACT.tkop = async el => {
   if (op === 'toggle') { t.aktif = !t.aktif; markDirty('pengaturan'); return bg(() => API.callRetry('updateToken', { token: el.dataset.t, op }), e => { t.aktif = !t.aktif; markDirty('pengaturan'); toast(esc(e.message), 'bad'); }); }
   if (op === 'regen') { if (!confirm('Buat token baru untuk ' + t.nama + '? Token lama langsung tidak berlaku.')) return;
     el.disabled = true; try { const r = await API.callRetry('updateToken', { token: t.token, op }); Object.assign(t, r.token); markDirty('pengaturan'); toast('Token baru: <b>' + esc(r.token.token) + '</b>', 'ok', { ms: 7000 }); } catch (e) { toast(esc(e.message), 'bad'); el.disabled = false; } }
+};
+
+// ------------------------------- SUMBER DATA: uji, pratinjau, sinkron, periode baru -------------------------------
+async function saveSettingsNow() {
+  if (!isDirtySet()) return;
+  const s = draft(), v = { ...s, bulan_mulai: +s.bulan_mulai, tahun_mulai: +s.tahun_mulai, jumlah_bulan: +s.jumlah_bulan, bobot_dosen: Math.min(100, Math.max(0, +s.bobot_dosen || 0)) };
+  const r = await API.callRetry('saveSettings', { settings: v });
+  Object.assign(S.settings, r.settings); S.ui.set = null; S.ver++; markDirty();
+}
+const SRCF = { surat: [['nim', 'NIM *'], ['perihal', 'Perihal surat *'], ['mitra', 'Tempat magang / instansi *'], ['dosen', 'Dosen pembimbing *'], ['nama', 'Nama mahasiswa'], ['tanggal', 'Tanggal surat'], ['prodi', 'Program studi']],
+               rekap: [['nim', 'NIM *'], ['semester', 'Semester *'], ['nama', 'Nama mahasiswa'], ['prodi', 'Program studi']] };
+function parseMapD() { try { return JSON.parse(draft().map || '{}') || {}; } catch (e) { return {}; } }
+ACT.srccols = async () => {
+  const d = draft(), kinds = [];
+  if (d.src_surat_url) kinds.push('surat'); if (d.src_rekap_url) kinds.push('rekap');
+  if (!kinds.length) return toast('Isi tautan Aplikasi Surat terlebih dahulu.', 'bad');
+  const m = modal(`<div class="mh2"><h3>Uji Tautan & Atur Kolom</h3><button class="icb" data-close>${ic('x')}</button></div><div id="srcbody"><div class="center"><span class="spin dark big"></span><p class="muted">Menghubungi spreadsheet…</p></div></div>`, 'wide');
+  const st = {}, map = parseMapD();
+  const load = async kind => {
+    try { st[kind] = await API.call('previewSumber', { kind, url: d['src_' + kind + '_url'], sheet: d['src_' + kind + '_sheet'], map }); st[kind].err = ''; }
+    catch (e) { st[kind] = { err: e.message }; }
+  };
+  const draw = () => {
+    $('#srcbody', m).innerHTML = kinds.map(k => {
+      const p = st[k]; const ttl = k === 'surat' ? 'Aplikasi Surat' : 'Rekap Mahasiswa';
+      if (p.err) return `<div class="alert bad"><div><b>${ttl}</b><p>${esc(p.err)}</p></div></div>`;
+      return `<div class="dm"><h4>${ttl}: ${esc(p.judul)} <span class="b ok">${p.total} baris</span></h4>
+        <label class="lb">Sheet</label><select data-sheet="${k}">${p.sheets.map(n => `<option ${n === p.sheet ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <div class="fgrid">${SRCF[k].map(([f, lb]) => `<div><label class="lb">${lb}</label><select data-fld="${k}.${f}"><option value="">(tidak dipakai)</option>${p.headers.map(h => `<option ${h === p.detected[f] ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></div>`).join('')}</div>
+        <div class="tscroll"><table class="tbl" style="min-width:0;font-size:12px"><thead><tr>${p.headers.slice(0, 8).map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${p.sample.map(r => `<tr>${r.slice(0, 8).map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+    }).join('') + `<div class="two"><button class="btn ghost" data-close>Batal</button><button class="btn pri" id="srcsave">${ic('check')} Simpan Pengaturan Kolom</button></div>`;
+    $$('select[data-sheet]', m).forEach(sel => sel.onchange = async () => { const k = sel.dataset.sheet; d['src_' + k + '_sheet'] = sel.value; delete map[k]; $('#srcbody', m).style.opacity = .5; await load(k); $('#srcbody', m).style.opacity = 1; draw(); });
+    const sv = $('#srcsave', m); if (sv) sv.onclick = async () => {
+      const out = {}; let warn = '';
+      kinds.forEach(k => { if (st[k].err) return; out[k] = {}; SRCF[k].forEach(([f, lb]) => { const v = $('select[data-fld="' + k + '.' + f + '"]', m).value; if (v) out[k][f] = v; else if (lb.endsWith('*')) warn = lb.replace(' *', ''); }); });
+      if (warn) return toast('Kolom wajib belum dipilih: ' + esc(warn), 'bad');
+      d.map = JSON.stringify(out);
+      sv.disabled = true; sv.innerHTML = '<span class="spin"></span> Menyimpan…';
+      try { await saveSettingsNow(); m.close(); toast('Pengaturan sumber & kolom tersimpan.'); } catch (e) { toast(esc(e.message), 'bad'); sv.disabled = false; sv.innerHTML = 'Simpan Pengaturan Kolom'; }
+    };
+  };
+  await Promise.all(kinds.map(load)); draw();
+};
+const syncReport = (r, apply) => `
+  <div class="stats3"><div class="card stat3 ok"><small>LAYAK MASUK</small><div><b>${r.layak}</b><span>mahasiswa</span></div></div>
+    <div class="card stat3 wait"><small>DILEWATI</small><div><b>${r.dilewati}</b><span>belum lengkap</span></div></div>
+    <div class="card stat3 mute"><small>DINONAKTIFKAN</small><div><b>${r.akanDiarsipkan}</b><span>tidak ada di sumber</span></div></div></div>
+  <p class="muted sm">${r.cocok} baris surat cocok dengan perihal “${esc(S.settings.src_surat_kata)}” · periode ${esc(r.periode)}</p>
+  ${r.skip.length ? `<h4 style="margin-top:12px">Dilewati (perlu dilengkapi di aplikasi surat/rekap)</h4><div class="tscroll" style="max-height:240px"><table class="tbl" style="min-width:0;font-size:12.5px"><tbody>${r.skip.map(x => `<tr><td class="mono">${esc(x.nim)}</td><td>${esc(x.nama)}</td><td class="red">${esc(x.alasan)}</td></tr>`).join('')}</tbody></table></div>${r.dilewati > r.skip.length ? `<small class="muted">…dan ${r.dilewati - r.skip.length} lainnya</small>` : ''}` : ''}
+  ${r.sample.length ? `<h4 style="margin-top:12px">Contoh yang masuk</h4><ul class="muted sm" style="padding-left:18px">${r.sample.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+ACT.syncpreview = async el => {
+  const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spin dark"></span> Memeriksa…';
+  try {
+    await saveSettingsNow();
+    const r = await API.call('syncNow', { dry: true });
+    const m = modal(`<div class="mh2"><h3>Pratinjau Sinkronisasi</h3><button class="icb" data-close>${ic('x')}</button></div>${syncReport(r)}
+      <div class="two"><button class="btn ghost" data-close>Tutup</button><button class="btn pri" id="pvapply" ${r.layak ? '' : 'disabled'}>${ic('refresh')} Terapkan Sekarang</button></div>`, 'wide');
+    $('#pvapply', m).onclick = () => { m.close(); ACT.syncnow($('[data-act=syncnow]')); };
+  } catch (e) { toast(esc(e.message), 'bad', { ms: 9000 }); }
+  el.disabled = false; el.innerHTML = old;
+};
+ACT.syncnow = async el => {
+  if (!el) return; const old = el.innerHTML; el.disabled = true; el.innerHTML = '<span class="spin dark"></span> Menyinkronkan…';
+  try {
+    await saveSettingsNow();
+    const r = await API.call('syncNow', {}); S.settings.sync_last = r.last; S.settings.sync_msg = r.msg;
+    await refresh(true);
+    toast('Sinkronisasi selesai: ' + esc(r.msg) + (r.dilewati ? ' Buka “Pratinjau Hasil” untuk melihat yang dilewati.' : ''), 'ok', { ms: 7000 });
+  } catch (e) { toast(esc(e.message), 'bad', { ms: 9000 }); }
+  el.disabled = false; el.innerHTML = old;
+};
+ACT.perbaru = () => {
+  const cur = String(S.settings.tahun_akademik), mm = cur.match(/(\d{4})\s*\/\s*(\d{4})/), sug = mm ? (+mm[1] + 1) + '/' + (+mm[2] + 1) : '';
+  const m = modal(`<div class="mh2"><h3>Mulai Periode Baru</h3><button class="icb" data-close>${ic('x')}</button></div>
+    <div class="alert wait">${ic('alert')}<div><p>Periode <b>${esc(cur)}</b> akan diarsipkan (baca-saja). Mahasiswa periode baru dimasukkan lewat sinkronisasi. Foto, laporan, dan nilai lama tidak dihapus.</p></div></div>
+    <label class="lb">Nama periode baru</label><div class="inp"><input id="pn" value="${esc(sug)}" placeholder="2027/2028"></div>
+    <div class="fgrid"><div><label class="lb">Bulan mulai magang</label><select id="pb">${BULAN.map((b, i) => `<option value="${i + 1}" ${+S.settings.bulan_mulai === i + 1 ? 'selected' : ''}>${b}</option>`).join('')}</select></div>
+      <div><label class="lb">Tahun mulai</label><input type="number" id="pt" value="${+S.settings.tahun_mulai + 1}"></div>
+      <div><label class="lb">Durasi (bulan)</label><select id="pj">${[1, 2, 3, 4, 5, 6].map(n => `<option ${+S.settings.jumlah_bulan === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
+    <div class="two"><button class="btn ghost" data-close>Batal</button><button class="btn bad" id="pgo">${ic('check')} Arsipkan & Mulai Periode Baru</button></div>`);
+  $('#pgo', m).onclick = async e => {
+    const b = e.currentTarget, nama = $('#pn', m).value.trim(); if (!nama) return toast('Nama periode wajib diisi.', 'bad');
+    b.disabled = true; b.innerHTML = '<span class="spin"></span> Memproses…';
+    try {
+      await API.callRetry('startPeriode', { periode: nama, bulan_mulai: +$('#pb', m).value, tahun_mulai: +$('#pt', m).value, jumlah_bulan: +$('#pj', m).value });
+      m.close(); S.ui = {}; await refresh(true); toast('Periode ' + esc(nama) + ' dimulai. Jalankan sinkronisasi untuk memasukkan mahasiswa.', 'ok', { ms: 7000 });
+    } catch (er) { toast(esc(er.message), 'bad'); b.disabled = false; b.innerHTML = ic('check') + ' Arsipkan & Mulai Periode Baru'; }
+  };
 };

@@ -10,11 +10,7 @@ Dua bagian: **Backend** (Google Apps Script) lalu **Frontend** (GitHub Pages).
 4. Pilih fungsi **setupAppEnvironment** → ▶ Run (**HANYA SEKALI**). Izinkan akses Drive & Sheets.
 5. Buka **Execution log**. Catat baris `ADMIN LOGIN → username: admin | password: ...` (password acak, simpan!).
 6. Pilih fungsi **installTriggers** → ▶ Run (sinkronisasi harian 02:00 + keep-warm 5 menit agar tidak lambat saat pertama dibuka).
-7. Hubungkan data mahasiswa: **Project Settings → Script properties → Add**:
-   - `REKAP_SS_ID` = ID spreadsheet aplikasi Rekap Mahasiswa (teks di URL antara `/d/` dan `/edit`)
-   - `REKAP_SHEET` = nama sheet (opsional)
-   Kolom yang dikenali: NIM, Nama, Semester, Prodi, Mitra/Instansi, Pembimbing. Hanya semester 7 yang aktif.
-   Tanpa sumber, isi sheet **Mahasiswa** di Spreadsheet database secara manual (status_akses = `aktif`, semester = `7`). Dua baris contoh sudah ada — hapus sebelum dipakai nyata.
+7. (Tidak perlu lagi mengisi Script Properties.) Tautan sumber data diisi nanti **di dalam aplikasi**: login admin → Pengaturan → *Sumber Data Sinkronisasi*.
 8. **Deploy → New deployment → Web app**: Execute as **Me**, Who has access **Anyone** → Deploy → **salin URL `/exec`**.
 9. (Opsional) Ganti password admin: edit `PASSWORD` di fungsi `setAdminPassword`, Run, lalu hapus password dari kode.
 
@@ -54,3 +50,28 @@ Dua bagian: **Backend** (Google Apps Script) lalu **Frontend** (GitHub Pages).
 - Berkas Drive tidak publik; tampil lewat aplikasi (API `getFile`) dengan pemeriksaan hak akses.
 - Sesi berlaku 6 jam (batas CacheService); setelah itu login ulang.
 - Kuota GAS (waktu 6 menit/eksekusi, kuota harian Drive) perlu diuji pada beban puncak ±300 pengguna.
+
+## UPDATE dari versi 1 ke versi 2 (periode + sumber data dari aplikasi)
+
+**Backend (sekali saja)**
+1. Buka proyek Apps Script, ganti seluruh isi `Kode` dengan **Kode.gs** terbaru, Ctrl+S.
+2. Pilih fungsi **`upgradeKeV2`** → ▶ Run. Log harus menampilkan "kolom periode ditambahkan" untuk Mahasiswa, Foto, Laporan, Nilai, lalu "Upgrade v2 selesai". Data lama otomatis diberi periode aktif sekarang.
+3. **Deploy → Manage deployments → ✏ → Version: New version → Deploy.** URL `/exec` tetap sama, `config.js` tidak perlu diubah.
+4. Script Property `REKAP_SS_ID` / `REKAP_SHEET` (jika sudah dibuat) boleh dihapus; tidak dipakai lagi.
+
+**Frontend**: ekstrak ZIP baru, salin isi `js/`, `css/`, `index.html` menimpa file lama (jangan menimpa `js/config.js` jika sudah berisi URL Anda; atau isi ulang URL-nya), lalu di PowerShell: `git add .` → `git commit -m "update v2"` → `git push`, lalu Ctrl+Shift+R.
+
+**Mengisi sumber data (di aplikasi)**
+1. Login admin → **Pengaturan** → kartu *Sumber Data Sinkronisasi*.
+2. Tempel tautan spreadsheet **Aplikasi Surat** (wajib) dan **Rekap Mahasiswa** (opsional). Kedua spreadsheet harus bisa dibuka oleh akun Google pemilik script (bagikan sebagai Viewer).
+3. Klik **1. Uji Tautan & Atur Kolom** → cek kolom yang terdeteksi (NIM, Perihal, Tempat magang, Dosen pembimbing) → Simpan.
+4. Klik **2. Pratinjau Hasil** → lihat siapa yang layak masuk dan siapa yang dilewati beserta alasannya.
+5. Klik **3. Sinkronkan Sekarang**. Dua mahasiswa contoh otomatis dinonaktifkan.
+
+**Aturan masuk:** baris surat dengan perihal berisi kata kunci (default "verifikasi tempat magang"), punya NIM, tempat magang, dan dosen pembimbing. Jika Rekap diisi, mahasiswa juga harus semester 7. Mahasiswa yang tidak memenuhi tidak masuk dan tidak bisa login.
+
+## Pemakaian tahunan
+1. Saat angkatan baru: Pengaturan → **Mulai Periode Baru** (isi nama periode, bulan/tahun mulai, durasi).
+2. Jalankan **Sinkronkan Sekarang** untuk memasukkan mahasiswa periode baru.
+3. Data periode lama tetap aman: Rekap → pilih periode di dropdown (mode arsip, baca-saja). **Ekspor CSV** tersedia untuk laporan per periode.
+Folder Drive juga dipisah per periode (Uploads/2026-2027/NIM/...).

@@ -42,7 +42,8 @@ function renderBeranda() {
   <div class="hero card">
     <div><small class="eyebrow">TAHUN AKADEMIK ${esc(S.settings.tahun_akademik)}</small><h2>Selamat Datang, ${esc(S.user.name)}</h2>
     <div class="tags"><span class="tag">${ic('shield')}NIM: ${esc(p.nim)}</span><span class="tag">${ic('cap')}Semester 7</span></div>
-    ${p.mitra ? `<div class="mitra">${ic('building')}<span><b>Mitra:</b> ${esc(p.mitra)}</span></div>` : ''}</div>
+    ${p.mitra ? `<div class="mitra">${ic('building')}<span><b>Mitra:</b> ${esc(p.mitra)}</span></div>` : ''}
+    ${p.pembimbing ? `<div class="mitra">${ic('users')}<span><b>Dosen Pembimbing:</b> ${esc(p.pembimbing)}</span></div>` : ''}</div>
   </div>
   ${rej ? `<div class="alert wait">${ic('alert')}<div><b>Tindakan Diperlukan</b><p>Ada ${st.rej} foto yang ditolak${rej.alasan ? `: <i>“${esc(rej.alasan)}”</i>` : ''}. Silakan upload ulang.</p>
     <button class="btn amb sm" data-act="nav" data-v="foto">Periksa Foto ${ic('right')}</button></div></div>` : ''}
